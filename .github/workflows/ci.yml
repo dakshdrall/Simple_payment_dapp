@@ -1,0 +1,263 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, feature/**]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+  NEXT_PUBLIC_STELLAR_NETWORK: TESTNET
+  NEXT_PUBLIC_HORIZON_URL: https://horizon-testnet.stellar.org
+  NEXT_PUBLIC_SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+  NEXT_PUBLIC_TOKEN_CONTRACT_ID: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCN
+  NEXT_PUBLIC_SWAP_CONTRACT_ID: CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA
+
+jobs:
+  # ============================================================
+  # Job 1: Install & Cache Dependencies
+  # ============================================================
+  install:
+    name: 📦 Install Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.cache-npm.outputs.cache-hit }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Cache node_modules
+        id: cache-npm
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        if: steps.cache-npm.outputs.cache-hit != 'true'
+        run: npm ci --legacy-peer-deps
+
+  # ============================================================
+  # Job 2: Lint
+  # ============================================================
+  lint:
+    name: 🔍 Lint
+    runs-on: ubuntu-latest
+    needs: install
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore node_modules cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies (if cache miss)
+        run: npm ci --legacy-peer-deps
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+  # ============================================================
+  # Job 3: Unit Tests
+  # ============================================================
+  test:
+    name: 🧪 Tests
+    runs-on: ubuntu-latest
+    needs: install
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore node_modules cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies (if cache miss)
+        run: npm ci --legacy-peer-deps
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+  # ============================================================
+  # Job 4: Build
+  # ============================================================
+  build:
+    name: 🏗️ Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore node_modules cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies (if cache miss)
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Next.js application
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build
+          path: |
+            .next/
+            public/
+          retention-days: 7
+
+  # ============================================================
+  # Job 5: Rust Contract Build (optional, only if Rust toolchain)
+  # ============================================================
+  contracts:
+    name: 🦀 Soroban Contracts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust/Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            contracts/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Soroban CLI
+        run: |
+          cargo install --locked soroban-cli --features opt 2>/dev/null || \
+          cargo install soroban-cli 2>/dev/null || \
+          echo "Soroban CLI installation attempted"
+
+      - name: Build Token Contract
+        working-directory: contracts/token
+        run: cargo build --target wasm32-unknown-unknown --release
+        continue-on-error: true
+
+      - name: Build Swap Contract
+        working-directory: contracts/swap
+        run: cargo build --target wasm32-unknown-unknown --release
+        continue-on-error: true
+
+      - name: Upload contract WASMs
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: contract-wasms
+          path: |
+            contracts/token/target/wasm32-unknown-unknown/release/*.wasm
+            contracts/swap/target/wasm32-unknown-unknown/release/*.wasm
+          retention-days: 30
+
+  # ============================================================
+  # Job 6: Security Audit
+  # ============================================================
+  audit:
+    name: 🔒 Security Audit
+    runs-on: ubuntu-latest
+    needs: install
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high --production
+        continue-on-error: true
+
+  # ============================================================
+  # Job 7: Deploy Preview (on main branch)
+  # ============================================================
+  deploy-preview:
+    name: 🚀 Deploy Summary
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Build complete summary
+        run: |
+          echo "## 🌊 StellarSwap Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Dependencies | Installed |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Linting | Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Tests | Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Build | Succeeded |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Network:** Stellar Testnet" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
