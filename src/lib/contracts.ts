@@ -1,7 +1,7 @@
 import {
-  SorobanRpc,
+  rpc,
   TransactionBuilder,
-  Networks,
+  Operation,
   BASE_FEE,
   xdr,
   Address,
@@ -15,12 +15,12 @@ import { StellarNetwork } from '@/types';
 // Soroban RPC Client
 // ============================================================
 
-let sorobanClient: SorobanRpc.Server | null = null;
+let sorobanClient: rpc.Server | null = null;
 
-export function getSorobanClient(network: StellarNetwork = DEFAULT_NETWORK): SorobanRpc.Server {
+export function getSorobanClient(network: StellarNetwork = DEFAULT_NETWORK): rpc.Server {
   if (!sorobanClient) {
     const config = getNetworkConfig(network);
-    sorobanClient = new SorobanRpc.Server(config.sorobanRpcUrl, { allowHttp: false });
+    sorobanClient = new rpc.Server(config.sorobanRpcUrl, { allowHttp: false });
   }
   return sorobanClient;
 }
@@ -66,22 +66,17 @@ export async function simulateContractCall(
     fee: BASE_FEE,
     networkPassphrase: config.networkPassphrase,
   })
-    .addOperation(
-      xdr.Operation.fromXDR(
-        buildInvokeOperation(contractId, functionName, args),
-        'base64'
-      )
-    )
+    .addOperation(buildInvokeOperation(contractId, functionName, args))
     .setTimeout(30)
     .build();
 
   const simResult = await client.simulateTransaction(tx);
 
-  if (SorobanRpc.Api.isSimulationError(simResult)) {
+  if (rpc.Api.isSimulationError(simResult)) {
     throw new Error(`Simulation failed: ${simResult.error}`);
   }
 
-  if (!SorobanRpc.Api.isSimulationSuccess(simResult)) {
+  if (!rpc.Api.isSimulationSuccess(simResult)) {
     throw new Error('Contract simulation returned no result');
   }
 
@@ -111,24 +106,19 @@ export async function invokeContract({
     fee: BASE_FEE,
     networkPassphrase: config.networkPassphrase,
   })
-    .addOperation(
-      xdr.Operation.fromXDR(
-        buildInvokeOperation(contractId, functionName, args),
-        'base64'
-      )
-    )
+    .addOperation(buildInvokeOperation(contractId, functionName, args))
     .setTimeout(180)
     .build();
 
   // Simulate to get resource estimates
   const simResult = await client.simulateTransaction(tx);
 
-  if (SorobanRpc.Api.isSimulationError(simResult)) {
+  if (rpc.Api.isSimulationError(simResult)) {
     throw new Error(`Simulation failed: ${simResult.error}`);
   }
 
   // Assemble with simulation data
-  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  const assembled = rpc.assembleTransaction(tx, simResult).build();
   const xdrStr = assembled.toXDR();
 
   // Sign the transaction
@@ -136,7 +126,7 @@ export async function invokeContract({
 
   // Submit
   const submitResult = await client.sendTransaction(
-    xdr.TransactionEnvelope.fromXDR(signedXDR, 'base64') as Parameters<typeof client.sendTransaction>[0]
+    TransactionBuilder.fromXDR(signedXDR, config.networkPassphrase)
   );
 
   if (submitResult.status === 'ERROR') {
@@ -150,7 +140,7 @@ export async function invokeContract({
   let attempts = 0;
 
   while (
-    getResult.status === SorobanRpc.Api.GetTransactionStatus.NOT_FOUND &&
+    getResult.status === rpc.Api.GetTransactionStatus.NOT_FOUND &&
     attempts < 30
   ) {
     await sleep(2000);
@@ -158,9 +148,9 @@ export async function invokeContract({
     attempts++;
   }
 
-  if (getResult.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+  if (getResult.status === rpc.Api.GetTransactionStatus.SUCCESS) {
     return hash;
-  } else if (getResult.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
+  } else if (getResult.status === rpc.Api.GetTransactionStatus.FAILED) {
     throw new Error('Transaction failed on-chain');
   } else {
     throw new Error('Transaction polling timed out');
@@ -339,7 +329,7 @@ export interface EventFilter {
 export async function fetchContractEvents(
   filter: EventFilter,
   network: StellarNetwork = DEFAULT_NETWORK
-): Promise<SorobanRpc.Api.RawEventResponse[]> {
+): Promise<rpc.Api.EventResponse[]> {
   const client = getSorobanClient(network);
 
   try {
@@ -372,22 +362,17 @@ function buildInvokeOperation(
   contractId: string,
   functionName: string,
   args: xdr.ScVal[]
-): string {
+): xdr.Operation {
   const contract = new xdr.InvokeContractArgs({
     contractAddress: new Address(contractId).toScAddress(),
     functionName: functionName,
     args: args,
   });
 
-  const op = xdr.Operation.fromXDR(
-    xdr.Operation.invokeHostFunction({
-      hostFunction: xdr.HostFunction.hostFunctionTypeInvokeContract(contract),
-      auth: [],
-    }).toXDR('base64'),
-    'base64'
-  );
-
-  return op.toXDR('base64');
+  return Operation.invokeHostFunction({
+    func: xdr.HostFunction.hostFunctionTypeInvokeContract(contract),
+    auth: [],
+  });
 }
 
 function sleep(ms: number): Promise<void> {

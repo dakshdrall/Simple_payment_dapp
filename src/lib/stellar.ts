@@ -187,7 +187,7 @@ export async function pollTransactionStatus(
         return {
           hash: tx.hash,
           status: 'SUCCESS',
-          ledger: tx.ledger,
+          ledger: tx.ledger_attr,
         };
       } else {
         return {

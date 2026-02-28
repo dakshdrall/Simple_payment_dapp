@@ -57,7 +57,7 @@ class Cache {
    * Invalidate all entries matching a prefix
    */
   invalidatePrefix(prefix: string): void {
-    for (const key of this.store.keys()) {
+    for (const key of Array.from(this.store.keys())) {
       if (key.startsWith(prefix)) {
         this.delete(key);
       }
@@ -75,7 +75,7 @@ class Cache {
    * Clear all cache entries
    */
   clear(): void {
-    for (const timer of this.timers.values()) {
+    for (const timer of Array.from(this.timers.values())) {
       clearTimeout(timer);
     }
     this.store.clear();
