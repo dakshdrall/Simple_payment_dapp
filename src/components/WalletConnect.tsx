@@ -239,8 +239,8 @@ export function WalletConnect({
 
       {/* Wallet Picker Modal */}
       {showWalletPicker && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-stellar-card border border-stellar-border rounded-2xl w-full max-w-sm shadow-2xl animate-slide-up max-h-[80vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-start justify-center z-50 p-4 pt-20 animate-fade-in">
+          <div className="bg-stellar-card border border-stellar-border rounded-2xl w-full max-w-sm shadow-2xl animate-slide-up max-h-[70vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-stellar-border flex-shrink-0">
               <div>
