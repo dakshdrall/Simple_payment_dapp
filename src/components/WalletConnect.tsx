@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { WalletState, WalletType, WalletInfo } from '@/types';
+import React, { useState, useEffect } from 'react';
+import { WalletState, WalletType } from '@/types';
 import { shortenAddress } from '@/lib/stellar';
 import { getErrorLabel } from '@/lib/errors';
 import { LoadingSpinner } from './LoadingSpinner';
@@ -10,26 +10,50 @@ import { LoadingSpinner } from './LoadingSpinner';
 // Supported Wallets Config
 // ============================================================
 
-const SUPPORTED_WALLETS: WalletInfo[] = [
+interface WalletConfig {
+  id: WalletType;
+  name: string;
+  icon: string;
+  description: string;
+  installUrl: string;
+}
+
+const SUPPORTED_WALLETS: WalletConfig[] = [
   {
     id: 'freighter',
     name: 'Freighter',
     icon: '🔮',
     description: 'Official Stellar wallet by SDF',
+    installUrl: 'https://www.freighter.app/',
   },
   {
     id: 'xbull',
     name: 'xBull',
     icon: '🐂',
     description: 'Feature-rich Stellar wallet',
+    installUrl: 'https://xbull.app/',
   },
   {
     id: 'albedo',
     name: 'Albedo',
     icon: '🌟',
-    description: 'Web-based Stellar signer',
+    description: 'Web-based Stellar signer (no install needed)',
+    installUrl: 'https://albedo.link/',
   },
 ];
+
+function getWindowProp(key: string): unknown {
+  if (typeof window === 'undefined') return undefined;
+  return (window as unknown as { [k: string]: unknown })[key];
+}
+
+function detectWallet(id: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (id === 'freighter') return !!(getWindowProp('freighterApi') || getWindowProp('freighter'));
+  if (id === 'xbull') return !!(getWindowProp('xBullSDK') || getWindowProp('xbull'));
+  if (id === 'albedo') return true; // web-based, always available
+  return false;
+}
 
 // ============================================================
 // WalletConnect Component
@@ -52,6 +76,7 @@ export function WalletConnect({
 }: WalletConnectProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [internalPickerOpen, setInternalPickerOpen] = useState(false);
+  const [installedWallets, setInstalledWallets] = useState<Record<string, boolean>>({});
 
   // Use externally-controlled state when provided, otherwise use internal state
   const showWalletPicker = pickerOpen !== undefined ? pickerOpen : internalPickerOpen;
@@ -59,6 +84,15 @@ export function WalletConnect({
     setInternalPickerOpen(open);
     onPickerOpenChange?.(open);
   };
+
+  // Detect installed wallets on the client
+  useEffect(() => {
+    const detected: Record<string, boolean> = {};
+    SUPPORTED_WALLETS.forEach((w) => {
+      detected[w.id] = detectWallet(w.id);
+    });
+    setInstalledWallets(detected);
+  }, []);
 
   const { isConnected, publicKey, walletType, isLoading, error, network } = walletState;
 
@@ -206,9 +240,9 @@ export function WalletConnect({
       {/* Wallet Picker Modal */}
       {showWalletPicker && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-stellar-card border border-stellar-border rounded-2xl w-full max-w-sm shadow-2xl animate-slide-up">
+          <div className="bg-stellar-card border border-stellar-border rounded-2xl w-full max-w-sm shadow-2xl animate-slide-up max-h-[80vh] flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-stellar-border">
+            <div className="flex items-center justify-between p-6 border-b border-stellar-border flex-shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-white">Connect Wallet</h2>
                 <p className="text-sm text-gray-500 mt-0.5">Choose your Stellar wallet</p>
@@ -223,39 +257,63 @@ export function WalletConnect({
               </button>
             </div>
 
-            {/* Wallet Options */}
-            <div className="p-4 space-y-2">
-              {SUPPORTED_WALLETS.map((wallet) => (
-                <button
-                  key={wallet.id}
-                  onClick={() => handleConnectWallet(wallet.id)}
-                  disabled={isLoading}
-                  className="w-full flex items-center gap-4 p-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-stellar-blue/50 rounded-xl transition-all duration-200 group disabled:opacity-50"
-                >
-                  <span className="text-2xl">{wallet.icon}</span>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-semibold text-white group-hover:text-stellar-blue transition-colors">
-                      {wallet.name}
-                    </p>
-                    <p className="text-xs text-gray-500">{wallet.description}</p>
-                  </div>
-                  <svg
-                    className="w-4 h-4 text-gray-600 group-hover:text-stellar-blue transition-colors"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+            {/* Wallet Options — scrollable */}
+            <div className="p-4 space-y-2 overflow-y-auto flex-1">
+              {SUPPORTED_WALLETS.map((wallet) => {
+                const isInstalled = installedWallets[wallet.id] ?? false;
+                return (
+                  <div
+                    key={wallet.id}
+                    className="flex items-center gap-4 p-4 bg-gray-900 border border-gray-800 hover:border-stellar-blue/50 rounded-xl transition-all duration-200"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              ))}
+                    <span className="text-2xl">{wallet.icon}</span>
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-white">{wallet.name}</p>
+                        {isInstalled && (
+                          <span className="text-xs bg-green-500/20 text-green-400 border border-green-500/30 rounded-full px-2 py-0.5">
+                            Detected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{wallet.description}</p>
+                    </div>
+
+                    {isInstalled ? (
+                      <button
+                        onClick={() => handleConnectWallet(wallet.id)}
+                        disabled={isLoading}
+                        className="flex-shrink-0 text-sm font-semibold text-stellar-blue hover:text-white bg-stellar-blue/10 hover:bg-stellar-blue border border-stellar-blue/30 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                      >
+                        {isLoading ? <LoadingSpinner size="sm" /> : 'Connect'}
+                      </button>
+                    ) : (
+                      <a
+                        href={wallet.installUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 text-sm font-semibold text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-lg transition-all"
+                      >
+                        Install
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Footer */}
-            <div className="p-4 pt-0">
+            <div className="p-4 border-t border-stellar-border flex-shrink-0">
               <p className="text-xs text-center text-gray-600">
-                By connecting, you agree to the{' '}
-                <span className="text-stellar-blue">Terms of Service</span>
+                New to Stellar wallets?{' '}
+                <a
+                  href="https://www.freighter.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-stellar-blue hover:underline"
+                >
+                  Get Freighter
+                </a>
               </p>
             </div>
           </div>

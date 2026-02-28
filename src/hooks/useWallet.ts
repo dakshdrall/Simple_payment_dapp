@@ -6,7 +6,7 @@ import { parseError } from '@/lib/errors';
 import { DEFAULT_NETWORK } from '@/lib/stellar';
 
 // ============================================================
-// StellarWalletsKit integration with multi-wallet support
+// Multi-wallet hook with direct API connections
 // ============================================================
 
 interface UseWalletReturn extends WalletState {
@@ -18,8 +18,69 @@ interface UseWalletReturn extends WalletState {
 
 const WALLET_STORAGE_KEY = 'stellar_wallet_type';
 
-// Kit is a static class — track whether it has been initialized
 let kitInitialized = false;
+
+async function initKit() {
+  if (kitInitialized) return;
+  try {
+    const { StellarWalletsKit, Networks } = await import('@creit.tech/stellar-wallets-kit');
+    const { FreighterModule, FREIGHTER_ID } = await import(
+      '@creit.tech/stellar-wallets-kit/modules/freighter'
+    );
+    const { xBullModule } = await import(
+      '@creit.tech/stellar-wallets-kit/modules/xbull'
+    );
+
+    StellarWalletsKit.init({
+      network: Networks.TESTNET,
+      selectedWalletId: FREIGHTER_ID,
+      modules: [new FreighterModule() as never, new xBullModule() as never],
+    });
+    kitInitialized = true;
+  } catch {
+    // Kit unavailable — direct APIs will be used
+  }
+}
+
+// Connect to Freighter directly using @stellar/freighter-api
+async function connectFreighter(): Promise<{ publicKey: string; network: StellarNetwork }> {
+  const freighterApi = await import('@stellar/freighter-api');
+
+  // requestAccess() prompts the user to grant access and returns the public key.
+  // In v2 it may return a string or { publicKey: string }.
+  const result = await freighterApi.requestAccess();
+  const publicKey =
+    typeof result === 'string'
+      ? result
+      : (result as { publicKey?: string })?.publicKey ?? '';
+
+  if (!publicKey) {
+    throw new Error('Freighter access denied or wallet not installed. Install Freighter at https://www.freighter.app/');
+  }
+
+  let network: StellarNetwork = 'TESTNET';
+  try {
+    const details = await freighterApi.getNetworkDetails();
+    const net = (details as { network?: string })?.network?.toUpperCase();
+    if (net === 'PUBLIC' || net === 'FUTURENET' || net === 'TESTNET') {
+      network = net as StellarNetwork;
+    }
+  } catch {
+    // Default to TESTNET
+  }
+
+  return { publicKey, network };
+}
+
+// Connect via StellarWalletsKit (for xBull, Albedo, etc.)
+async function connectViaKit(walletId: string): Promise<string> {
+  await initKit();
+  const { StellarWalletsKit } = await import('@creit.tech/stellar-wallets-kit');
+  StellarWalletsKit.setWallet(walletId);
+  const { address } = await StellarWalletsKit.getAddress();
+  if (!address) throw new Error('No address returned from wallet');
+  return address;
+}
 
 export function useWallet(): UseWalletReturn {
   const [state, setState] = useState<WalletState>({
@@ -33,30 +94,6 @@ export function useWallet(): UseWalletReturn {
 
   const activeWalletRef = useRef<WalletType | null>(null);
 
-  // Ensure kit is initialized (static class, only do once)
-  const initKit = useCallback(async () => {
-    if (kitInitialized) return;
-    try {
-      const { StellarWalletsKit, Networks } = await import('@creit.tech/stellar-wallets-kit');
-      // Modules are subpath exports in v2 — type declarations in src/types/stellar-wallets-kit.d.ts
-      const { FreighterModule, FREIGHTER_ID } = await import(
-        '@creit.tech/stellar-wallets-kit/modules/freighter'
-      );
-      const { xBullModule } = await import(
-        '@creit.tech/stellar-wallets-kit/modules/xbull'
-      );
-
-      StellarWalletsKit.init({
-        network: Networks.TESTNET,
-        selectedWalletId: FREIGHTER_ID,
-        modules: [new FreighterModule() as any, new xBullModule() as any],
-      });
-      kitInitialized = true;
-    } catch {
-      // Kit init failed — will fall back to Freighter API directly
-    }
-  }, []);
-
   // Restore wallet session on mount
   useEffect(() => {
     const saved = localStorage.getItem(WALLET_STORAGE_KEY) as WalletType | null;
@@ -68,92 +105,45 @@ export function useWallet(): UseWalletReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const connect = useCallback(
-    async (walletType?: WalletType) => {
-      setState((prev: WalletState) => ({ ...prev, isLoading: true, error: null }));
+  const connect = useCallback(async (walletType?: WalletType) => {
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      // ---- Try @creit.tech/stellar-wallets-kit (static class) ----
-      try {
-        await initKit();
+    const type = walletType || 'freighter';
 
-        const { StellarWalletsKit } = await import('@creit.tech/stellar-wallets-kit');
-
-        // Map our WalletType to kit wallet IDs
-        const walletIdMap: Record<WalletType, string> = {
-          freighter: 'freighter',
-          xbull: 'xbull',
-          albedo: 'albedo',
-          rabet: 'rabet',
-          hana: 'hana',
-        };
-
-        if (walletType) {
-          StellarWalletsKit.setWallet(walletIdMap[walletType]);
-        }
-
-        const { address } = await StellarWalletsKit.getAddress();
-
-        if (!address) throw new Error('No address returned from wallet');
-
-        const resolvedType = walletType || 'freighter';
-        activeWalletRef.current = resolvedType;
-
-        setState({
-          isConnected: true,
-          publicKey: address,
-          walletType: resolvedType,
-          network: DEFAULT_NETWORK,
-          isLoading: false,
-          error: null,
-        });
-
-        localStorage.setItem(WALLET_STORAGE_KEY, resolvedType);
-        return;
-      } catch {
-        // Fall through to Freighter API direct
-      }
-
-      // ---- Fallback: Freighter API v2 directly ----
-      try {
-        const {
-          isConnected: checkConnected,
-          getPublicKey,
-          getNetworkDetails,
-          requestAccess,
-        } = await import('@stellar/freighter-api');
-
-        const connected = await checkConnected();
-        if (!connected) {
-          await requestAccess();
-        }
-
-        const publicKey = await getPublicKey();
-        if (!publicKey) throw new Error('Wallet not found. Please install Freighter.');
-
-        const details = await getNetworkDetails();
-
+    try {
+      if (type === 'freighter') {
+        // Use the direct Freighter API for reliable access-requesting
+        const { publicKey, network } = await connectFreighter();
         activeWalletRef.current = 'freighter';
         setState({
           isConnected: true,
           publicKey,
           walletType: 'freighter',
-          network: (details.network?.toUpperCase() as StellarNetwork) || 'TESTNET',
+          network,
           isLoading: false,
           error: null,
         });
-
         localStorage.setItem(WALLET_STORAGE_KEY, 'freighter');
-      } catch (freighterErr) {
-        const parsedError = parseError(freighterErr);
-        setState((prev: WalletState) => ({
-          ...prev,
-          isLoading: false,
-          error: parsedError,
-        }));
+        return;
       }
-    },
-    [initKit]
-  );
+
+      // xBull, Albedo, and others via StellarWalletsKit
+      const address = await connectViaKit(type);
+      activeWalletRef.current = type;
+      setState({
+        isConnected: true,
+        publicKey: address,
+        walletType: type,
+        network: DEFAULT_NETWORK,
+        isLoading: false,
+        error: null,
+      });
+      localStorage.setItem(WALLET_STORAGE_KEY, type);
+    } catch (err) {
+      const parsedError = parseError(err);
+      setState((prev) => ({ ...prev, isLoading: false, error: parsedError }));
+    }
+  }, []);
 
   const disconnect = useCallback(() => {
     setState({
@@ -172,7 +162,21 @@ export function useWallet(): UseWalletReturn {
     async (xdrString: string): Promise<string> => {
       if (!state.publicKey) throw new Error('Wallet not connected');
 
-      // ---- Try wallets kit (static class) ----
+      const type = activeWalletRef.current || state.walletType;
+
+      if (type === 'freighter') {
+        const { signTransaction: freighterSign } = await import('@stellar/freighter-api');
+        const result = await freighterSign(xdrString, {
+          networkPassphrase: 'Test SDF Network ; September 2015',
+          accountToSign: state.publicKey,
+        });
+        // Handle both string and { signedTxXdr } response shapes
+        return typeof result === 'string'
+          ? result
+          : (result as { signedTxXdr?: string })?.signedTxXdr ?? result as unknown as string;
+      }
+
+      // Other wallets via kit
       try {
         if (kitInitialized) {
           const { StellarWalletsKit } = await import('@creit.tech/stellar-wallets-kit');
@@ -183,42 +187,18 @@ export function useWallet(): UseWalletReturn {
           return signedTxXdr;
         }
       } catch {
-        // Fall through to Freighter API
+        // Fall through
       }
 
-      // ---- Fallback: Freighter API v2 ----
-      const { signTransaction: freighterSign } = await import('@stellar/freighter-api');
-      // Freighter v2 signTransaction returns Promise<string> directly
-      const signed = await freighterSign(xdrString, {
-        networkPassphrase: 'Test SDF Network ; September 2015',
-        accountToSign: state.publicKey,
-      });
-      return signed;
+      throw new Error('Unable to sign transaction — no wallet connected');
     },
-    [state.publicKey]
+    [state.publicKey, state.walletType]
   );
 
   const openWalletModal = useCallback(async () => {
-    try {
-      await initKit();
-      const { StellarWalletsKit } = await import('@creit.tech/stellar-wallets-kit');
-      const { address } = await StellarWalletsKit.authModal();
-      if (address) {
-        const resolvedType = activeWalletRef.current || 'freighter';
-        setState({
-          isConnected: true,
-          publicKey: address,
-          walletType: resolvedType,
-          network: DEFAULT_NETWORK,
-          isLoading: false,
-          error: null,
-        });
-        localStorage.setItem(WALLET_STORAGE_KEY, resolvedType);
-      }
-    } catch {
-      await connect('freighter');
-    }
-  }, [initKit, connect]);
+    // Directly trigger the connect flow; the UI picker is handled by the page
+    await connect('freighter');
+  }, [connect]);
 
   return {
     ...state,

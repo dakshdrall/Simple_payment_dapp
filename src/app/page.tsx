@@ -284,66 +284,112 @@ export default function HomePage() {
           </div>
         ) : (
           /* ============================================================
-             Not Connected — Show Swap UI with Connect Prompt
+             Not Connected — Tab-aware Connect Prompts
              ============================================================ */
-          <div className="max-w-md mx-auto animate-slide-up">
-            <div className="bg-stellar-card border border-stellar-border rounded-2xl overflow-hidden shadow-card">
-              {/* Swap Preview */}
-              <div className="p-6 space-y-3">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-sm font-semibold text-white">🔄 Swap</span>
-                  <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded-lg">0.3% fee</span>
-                </div>
-
-                {/* From */}
-                <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 opacity-60">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
-                      <span>🌊</span>
-                      <span className="text-sm font-semibold">SST</span>
-                    </div>
-                    <span className="text-2xl font-bold text-gray-600">0.00</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-center">
-                  <div className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* To */}
-                <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 opacity-60">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
-                      <span>💜</span>
-                      <span className="text-sm font-semibold">SST-B</span>
-                    </div>
-                    <span className="text-2xl font-bold text-gray-600">0.00</span>
-                  </div>
-                </div>
-
-                {/* Connect Prompt */}
+          <div className="max-w-md mx-auto animate-slide-up space-y-4">
+            {/* Mobile Tab Nav */}
+            <div className="flex md:hidden bg-gray-900 rounded-xl p-1 gap-1">
+              {(['swap', 'send', 'events'] as const).map((section) => (
                 <button
-                  onClick={() => setWalletPickerOpen(true)}
-                  disabled={wallet.isLoading}
-                  className="w-full py-4 bg-gradient-stellar text-white font-bold rounded-xl hover:opacity-90 transition-all shadow-stellar hover:shadow-stellar-hover"
+                  key={section}
+                  onClick={() => setActiveSection(section)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                    activeSection === section
+                      ? 'bg-stellar-blue text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
                 >
-                  {wallet.isLoading ? 'Connecting...' : 'Connect Wallet to Swap'}
+                  {section === 'swap' && '🔄 Swap'}
+                  {section === 'send' && '↗️ Send'}
+                  {section === 'events' && '⚡ Events'}
                 </button>
-              </div>
+              ))}
+            </div>
 
-              {/* Footer */}
-              <div className="px-6 py-3 bg-gray-900/50 border-t border-gray-800 flex items-center justify-between">
-                <span className="text-xs text-gray-600">Powered by Soroban</span>
-                <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-                  Testnet
+            {/* Events Tab — works without a wallet */}
+            {activeSection === 'events' && (
+              <EventFeed
+                events={events}
+                isStreaming={isStreaming}
+                lastLedger={lastLedger}
+                onStartStreaming={startStreaming}
+                onStopStreaming={stopStreaming}
+                onClear={clearEvents}
+              />
+            )}
+
+            {/* Swap / Send — preview + connect prompt */}
+            {(activeSection === 'swap' || activeSection === 'send') && (
+              <div className="bg-stellar-card border border-stellar-border rounded-2xl overflow-hidden shadow-card">
+                {activeSection === 'swap' ? (
+                  <div className="p-6 space-y-3">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-sm font-semibold text-white">🔄 Swap</span>
+                      <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded-lg">0.3% fee</span>
+                    </div>
+                    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 opacity-60">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+                          <span>🌊</span>
+                          <span className="text-sm font-semibold">SST</span>
+                        </div>
+                        <span className="text-2xl font-bold text-gray-600">0.00</span>
+                      </div>
+                    </div>
+                    <div className="flex justify-center">
+                      <div className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center">
+                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 opacity-60">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+                          <span>💜</span>
+                          <span className="text-sm font-semibold">XLM</span>
+                        </div>
+                        <span className="text-2xl font-bold text-gray-600">0.00</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 space-y-3">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-sm font-semibold text-white">↗️ Send XLM</span>
+                    </div>
+                    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 opacity-60">
+                      <div className="text-xs text-gray-500 mb-2">Recipient Address</div>
+                      <div className="h-6 bg-gray-800 rounded animate-pulse" />
+                    </div>
+                    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 opacity-60">
+                      <div className="text-xs text-gray-500 mb-2">Amount (XLM)</div>
+                      <div className="h-6 bg-gray-800 rounded animate-pulse" />
+                    </div>
+                  </div>
+                )}
+
+                <div className="px-6 pb-6">
+                  <button
+                    onClick={() => setWalletPickerOpen(true)}
+                    disabled={wallet.isLoading}
+                    className="w-full py-4 bg-gradient-stellar text-white font-bold rounded-xl hover:opacity-90 transition-all shadow-stellar hover:shadow-stellar-hover"
+                  >
+                    {wallet.isLoading
+                      ? 'Connecting...'
+                      : `Connect Wallet to ${activeSection === 'swap' ? 'Swap' : 'Send'}`}
+                  </button>
+                </div>
+
+                <div className="px-6 py-3 bg-gray-900/50 border-t border-gray-800 flex items-center justify-between">
+                  <span className="text-xs text-gray-600">Powered by Soroban</span>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                    <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
+                    Testnet
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
