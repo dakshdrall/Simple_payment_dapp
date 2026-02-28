@@ -39,6 +39,7 @@ export default function HomePage() {
   );
 
   const [activeSection, setActiveSection] = useState<'swap' | 'send' | 'events'>('swap');
+  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
 
   // Fetch pool info when wallet connects
   useEffect(() => {
@@ -109,7 +110,8 @@ export default function HomePage() {
                 walletState={wallet}
                 onConnect={wallet.connect}
                 onDisconnect={wallet.disconnect}
-                onOpenModal={wallet.openWalletModal}
+                pickerOpen={walletPickerOpen}
+                onPickerOpenChange={setWalletPickerOpen}
               />
             </div>
           </div>
@@ -230,7 +232,7 @@ export default function HomePage() {
               </div>
 
               {/* Swap Panel */}
-              <div className={activeSection === 'swap' ? 'block' : 'hidden md:block'}>
+              <div className={activeSection === 'swap' ? 'block' : 'hidden'}>
                 <TokenSwap
                   publicKey={wallet.publicKey}
                   tokenBalance={tokenBalance?.balanceRaw ?? BigInt(0)}
@@ -253,7 +255,7 @@ export default function HomePage() {
               </div>
 
               {/* Send XLM Panel */}
-              <div className={activeSection === 'send' ? 'block' : 'hidden md:block'}>
+              <div className={activeSection === 'send' ? 'block' : 'hidden'}>
                 <SendXLM
                   publicKey={wallet.publicKey}
                   xlmBalance={xlmBalance.balanceRaw}
@@ -268,7 +270,7 @@ export default function HomePage() {
               </div>
 
               {/* Event Feed Panel */}
-              <div className={activeSection === 'events' ? 'block' : 'hidden md:block'}>
+              <div className={activeSection === 'events' ? 'block' : 'hidden'}>
                 <EventFeed
                   events={events}
                   isStreaming={isStreaming}
@@ -325,7 +327,7 @@ export default function HomePage() {
 
                 {/* Connect Prompt */}
                 <button
-                  onClick={() => wallet.connect()}
+                  onClick={() => setWalletPickerOpen(true)}
                   disabled={wallet.isLoading}
                   className="w-full py-4 bg-gradient-stellar text-white font-bold rounded-xl hover:opacity-90 transition-all shadow-stellar hover:shadow-stellar-hover"
                 >

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { WalletState, WalletType, WalletInfo, WalletErrorCode } from '@/types';
+import { WalletState, WalletType, WalletInfo } from '@/types';
 import { shortenAddress } from '@/lib/stellar';
 import { getErrorLabel } from '@/lib/errors';
 import { LoadingSpinner } from './LoadingSpinner';
@@ -39,17 +39,26 @@ interface WalletConnectProps {
   walletState: WalletState;
   onConnect: (walletType?: WalletType) => Promise<void>;
   onDisconnect: () => void;
-  onOpenModal?: () => void;
+  pickerOpen?: boolean;
+  onPickerOpenChange?: (open: boolean) => void;
 }
 
 export function WalletConnect({
   walletState,
   onConnect,
   onDisconnect,
-  onOpenModal,
+  pickerOpen,
+  onPickerOpenChange,
 }: WalletConnectProps) {
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showWalletPicker, setShowWalletPicker] = useState(false);
+  const [internalPickerOpen, setInternalPickerOpen] = useState(false);
+
+  // Use externally-controlled state when provided, otherwise use internal state
+  const showWalletPicker = pickerOpen !== undefined ? pickerOpen : internalPickerOpen;
+  const setShowWalletPicker = (open: boolean) => {
+    setInternalPickerOpen(open);
+    onPickerOpenChange?.(open);
+  };
 
   const { isConnected, publicKey, walletType, isLoading, error, network } = walletState;
 

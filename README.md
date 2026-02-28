@@ -2,7 +2,7 @@
 
 > A production-ready decentralized exchange built on **Stellar Testnet** using **Soroban smart contracts**. Swap tokens, provide liquidity, and interact with on-chain contracts — all from a responsive, modern UI.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://https://simple-payment-dapp-six.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://simple-payment-dapp-six.vercel.app)
 [![CI/CD](https://github.com/your-username/stellar-swap-dapp/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/stellar-swap-dapp/actions)
 [![Tests](https://img.shields.io/badge/Tests-129%20passed-brightgreen)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -14,7 +14,7 @@
 
 ## Live Demo
 
-**[https://https://simple-payment-dapp-six.vercel.app](https://https://simple-payment-dapp-six.vercel.app)**
+**[https://simple-payment-dapp-six.vercel.app](https://simple-payment-dapp-six.vercel.app)**
 
 > Deployed on Vercel — connects to **Stellar Testnet**. Install [Freighter](https://freighter.app), switch to Testnet, and fund your account with [Friendbot](https://laboratory.stellar.org/#account-creator) to interact.
 
