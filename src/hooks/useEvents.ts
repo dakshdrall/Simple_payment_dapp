@@ -131,7 +131,7 @@ function parseRawEvent(raw: {
   type: string;
   ledger: number | string;
   ledgerClosedAt: string;
-  contractId: string;
+  contractId?: unknown;
   txHash: string;
   topic: unknown[];
   value: unknown;
