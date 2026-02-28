@@ -156,7 +156,7 @@ Both contracts are deployed and live on **Stellar Testnet**.
 
 ## Demo Video
 
-**[Watch Demo Video — ADD YOUR LINK HERE](https://your-demo-video-link.com)**
+**[Watch Demo Video](https://drive.google.com/file/d/1_oIZ6VFravpWcDS7cpIKonqfdIa8psR5/view?usp=sharing)**
 
 The demo video covers:
 
